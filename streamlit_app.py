@@ -97,17 +97,31 @@ grad_model = tf.keras.models.Model(
 
 def generate_gradcam(img_array):
 
+    img_tensor = tf.convert_to_tensor(img_array, dtype=tf.float32)
+
+    grad_model = tf.keras.models.Model(
+        [model.inputs],
+        [
+            model.get_layer(last_conv_layer_name).output,
+            model.output
+        ]
+    )
+
     with tf.GradientTape() as tape:
 
-        conv_outputs, predictions = grad_model(img_array)
+        conv_outputs, predictions = grad_model(img_tensor)
 
-        loss = predictions[:,0]
+        class_channel = predictions[:, 0]
 
-    grads = tape.gradient(loss, conv_outputs)
+    grads = tape.gradient(class_channel, conv_outputs)
+
+    # Evitar gradientes None
+    if grads is None:
+        return np.zeros((IMG_SIZE[0], IMG_SIZE[1]))
 
     pooled_grads = tf.reduce_mean(
         grads,
-        axis=(0,1,2)
+        axis=(0, 1, 2)
     )
 
     conv_outputs = conv_outputs[0]
@@ -118,12 +132,14 @@ def generate_gradcam(img_array):
 
     heatmap = tf.maximum(heatmap, 0)
 
-    heatmap /= tf.math.reduce_max(heatmap)
+    max_heat = tf.math.reduce_max(heatmap)
 
-    heatmap = heatmap.numpy()
+    if max_heat == 0:
+        return np.zeros((IMG_SIZE[0], IMG_SIZE[1]))
 
-    return heatmap
+    heatmap /= max_heat
 
+    return heatmap.numpy()
 
 # =========================
 # STREAMLIT UI
